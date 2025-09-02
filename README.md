@@ -1,67 +1,80 @@
-# Voxel Engine
+# CS Club Open Source Team Recruitment Technical Assessment: Graphics
 
-![preview](https://github.com/user-attachments/assets/f4f6eb2c-5e47-4f15-8a8e-db896befeffd)
+Complete these tasks in order to learn 3D graphics programming concepts. Each builds upon the previous one.
 
-## Overview
+### Install
 
-![overview](assets/overview.png)
-
-### Instructions
-
-Make sure to clone this repository recursively!
-
-```
-git clone https://github.com/compsci-adl/voxel-engine --recursive
-```
-
-If you have cloned it non-recursively:
-
-```
-git submodule update --init
-```
-
-## Building and running
-
-### Linux, Mac OS, MSYS (Windows)
-
-```sh
-./build.sh
-```
-
-### Windows - Visual Studio
-
-```bat
-.\build.bat
-```
-
-## Troubleshooting
-
-#### Missing libraries error and ```libs/``` content missing:
-
-Either increase Git's maximum download size, then try again.
-
-```
-git config --global http.postBuffer 104857600
-git submodule update --init
-```
-
-Or manually clone libraries into their corresponding ``libs/`` folder.
+Refer to install.md for any debug steps for installing libraries
 
 
-#### Missing libraries Ubuntu
+### What you are provided
 
-In Ubuntu, install all the required packages with:
+You are given the basic engine and some template code for generating a single triangle.
 
-``` 
-sudo apt update
-sudo apt install libwayland-dev libxkbcommon-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev mesa-common-dev libgl1-mesa-dev
-```
+<img src="image.png" alt="Engine" width="600"/>
 
-## Contributing
+<br>
+Create using the following verticies in main.cpp
 
-Our voxel engine is currently a work-in-progress, but we still welcome contributions. If you find any issues, have suggestions, or want to request a feature, please follow our [Contributing Guidelines](https://github.com/compsci-adl/.github/blob/main/CONTRIBUTING.md).
+<img src="image-1.png" alt="Engine" width="600"/>
 
-## License
 
-This project is licensed under the MIT License.
-See [LICENSE](LICENSE) for details.
+### Task 1: Create a Cube
+Replace the current triangle with a 3D cube.
+
+**Hints**:
+- A cube has 8 vertices and 12 triangles (2 per face)
+- You'll need to modify the `verticies` and `indicies` vectors in `main.cpp`
+- Remember the vertex format: `x, y, z, r, g, b, brightness`
+- Consider which vertices connect to form each face
+- Think about triangle winding order (clockwise vs counter-clockwise)
+
+
+
+### Task 2: Simple Collision Detection
+Implement basic collision detection to prevent the camera from moving through objects.
+
+**Hints**:
+- Add a collision detection function that checks camera position against object boundaries
+- Modify the camera movement code in the main game loop
+- Consider using simple bounding boxes or sphere collision
+- You might want to store object positions and sizes in a data structure
+- Think about how to "push back" the camera when it hits something
+
+
+
+### Task 3: Basic Game - Maze or Platformer
+Create a simple game using your collision system. This doesn't need to be too complicated, its more to teach you how to work with the rendering and collision logic to actually create something.
+
+**Examples**:
+1. **Maze Game**: Create walls the player must navigate around
+2. **Platform Game**: Add gravity, jumping, and platforms to jump on
+
+**Hints**:
+- Use multiple cubes/objects to create your game world
+- For a maze: Create wall objects and use collision to prevent walking through them
+- For a platformer: Implement gravity (downward acceleration) and ground collision
+- Consider adding a simple goal system (reach a target location)
+- You might want to create a level data structure to define object positions
+- Think about game state management (win/lose conditions)
+
+
+## Additional Challenges
+
+Once you complete the main tasks, try these advanced features:
+- Multiple objects with different properties
+- Animation and movement of objects
+- Sound effects
+- More complex collision shapes
+- Particle effects
+
+## File Structure
+
+- `src/main.cpp` - Main application and game loop
+- `src/camera.h` - Camera class definition
+- `src/render.h` - Rendering system
+- `src/header.h` - Common includes and definitions
+- `src/shaders/` - Vertex and fragment shaders
+- `lib/` - External libraries (STB image, etc.)
+- `makefile` - Build configuration for multiple platforms
+

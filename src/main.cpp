@@ -1,691 +1,241 @@
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-
-#include <learnopengl/shader_m.h>
-
-#include "Ecs.h"
-#include "PhysicsSystem.h"
-#include "Renderer.h"
-#include "Block.h"
-
-#include <iostream>
-#include "utils.h"
-
-#include "Texture.h"
-#include "terrain/Plains.h"
-#include "terrain/Hills.h"
-#include "terrain/Platform.h"
-
-void framebuffer_size_callback(GLFWwindow *window, int width, int height);
-void mouse_callback(GLFWwindow *window, double xpos, double ypos);
-void imgui_mouse_callback(GLFWwindow *window, double xpos, double ypos);
-void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
-void processInput(GLFWwindow *window, bool *cursorOn);
-int calculateFPS(float deltaTime);
-float calculateMemUsage();
-void renderText(Shader &shader, std::string text, float x, float y, float scale,
-                glm::vec3 color);
-
-void createMovingBlocksWave(ChunkMesh<float> *entityMesh, float deltaTime);
-void createMovingBlocksRandom(ChunkMesh<float> *entityMesh, float deltaTime);
-
-
-// timing
-float deltaTime = 0.0f; // time between current frame and last frame
-float lastFrame = 0.0f;
-
-// key press map
-std::unordered_map<int, bool> keyPressMap;
-
-// Terrain chunk manager
-ChunkManager *chunkManager;
-// Global coordinator
-Coordinator gCoordinator;
-
-
-const int FPS_HISTORY_CAP = 5000;
-const int MEM_HISTORY_CAP = 5000;
-std::vector<float> fpsHistory;
-std::vector<float> memHistory;
-
-
-
-
-
-
-int main() {
-    // glfw: initialize and configure
-    // ------------------------------
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
-
-    // glfw window creation
-    // --------------------
-    GLFWwindow *window =
-        glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "woksol", NULL, NULL);
-    if (window == NULL) {
-        std::cout << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
-        return -1;
-    }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(0);
-
-    // imgui!!!
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    io.ConfigFlags |=
-        ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-    io.ConfigFlags |=
-        ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
-    // io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // IF using Docking
-    // Branch
-
-    // Setup Platform/Renderer backends
-    ImGui_ImplGlfw_InitForOpenGL(
-        window, true); // Second param install_callback=true will install GLFW
-                       // callbacks and chain to existing ones.
-    ImGui_ImplOpenGL3_Init(nullptr);
+/*
+3D Graphics Engine using shaders and OpenGL
 
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    glfwSetCursorPosCallback(window, mouse_callback);
-    glfwSetScrollCallback(window, scroll_callback);
+Last Update: 2/03/2025
 
-    // tell GLFW to capture our mouse
-    bool cursorOn = false;
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+*/
 
-    // glad: load all OpenGL function pointers
-    // ---------------------------------------
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        std::cout << "Failed to initialize GLAD" << std::endl;
-        return -1;
-    }
+#include "header.h"
+#include "camera.h"
+#include "render.h"
 
-    // configure global opengl state
-    // -----------------------------
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    // build and compile shader programs
-    // ------------------------------------
-    Shader *terrainShader =
-        new Shader("src/shaders/terrain.vert", "src/shaders/terrain.frag");
-    Shader *defaultShader =
-        new Shader("src/shaders/shader.vert", "src/shaders/shader.frag");
-    Shader *blockShader = 
-        new Shader("src/shaders/basic.vert", "src/shaders/basic.frag");
 
-    // define renderers
-    // -----------------------------
-    Renderer<int> * chunkRenderer = new ChunkRenderer();
-    Renderer<float> * blockRenderer = new BlockRenderer();
+using namespace std;
 
+void errorCallback(int error, const char* description) {
+  	std::cerr << "Error: " << description << std::endl;
+}
 
-
-    // code for creating a seperate block mesh and adding a block 
-    // this needs to be addressed in major refactor
-    // -------------------------------------------------------------
-
-    // add a block to block renderer
-    ChunkMesh<float> blockMesh;
-    // this should be part of class
-    blockMesh.vertexCount = 0;  // make set up code, refactor
-    blockMesh.triangleCount = 0;    // make set up code, refactor - change to index count
-    blockMesh.vaoId = 0; // Initialize VAO ID
-    blockMesh.vboId = nullptr; // Initialize VBO ID pointer
-
-    blockMesh.vertices = (float *)malloc(151200 * sizeof(float));   //allocate space
-    blockMesh.indices = (unsigned int *)malloc(32400 * sizeof(unsigned int));
 
-    // Block::creatColourCube(glm::vec3(0.0f, 5.0f, 0.0f),
-    //                        glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.5f, 0.5f),
-    //                        blockMesh.vertices, blockMesh.indices,
-    //                        &(blockMesh.vertexCount), &(blockMesh.triangleCount));
-
-    createMovingBlocksRandom(&blockMesh, 0.0f);
-
-
-    blockRenderer->upload(&(blockMesh.vaoId), &(blockMesh.vboId), 
-        blockMesh.vertices, blockMesh.vertexCount, blockMesh.indices, blockMesh.triangleCount, true);
-    
-
-
-
-    // load textures
-    // -----------------------------
-    Texture blockTextures("src/textures/terrain.png", 16, 16);
-    blockTextures.bindTexture(0);
-    terrainShader->use();
-    terrainShader->setInt("texture1", 0);   // set texture1 in shader to binded texture #0
-    terrainShader->setFloat("texWidth", (1.0f / (float) blockTextures.atlasCols));
-    terrainShader->setFloat("texHeight", (1.0f / (float) blockTextures.atlasRows));
 
+// This defines what points the triangle will use 
+// Also contains the color and brightness at each point
+// CONTAINS 3 POINTS
+vector<float> verticies = {
+	//x, y, z, r, g, b, brightness
+	-1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, // Bottom Left
+	 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, // Bottom Right
+	 0.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f // Top
+};
 
-    // optional: back face culling
-    // glEnable(GL_CULL_FACE);   // Enable backface culling
-	// glCullFace(GL_BACK);      // Cull back faces
-	// glFrontFace(GL_CCW);   
+// This determines the order that the points are drawn
+// These are indicies for the array above
+vector<unsigned int> indicies = {
+	0, 1, 2 // Triangle
+};
 
 
-    char fpsStr[32] = "FPS: 0";
-    char memStr[32];
 
-    // define terrain generator
-    // -----------------------------
-    TerrainGenerator *terrainGenerator = new TerrainGenerator(Chunk::CHUNK_SIZE, 0);
-    // Use custom terrain generator
-    // TerrainGenerator * terrainGenerator = new HillsTerrainGenerator(Chunk::CHUNK_SIZE, 1337);
 
 
-    // initialize coordinator
-    chunkManager = new ChunkManager(4, 3, terrainShader, chunkRenderer, terrainGenerator);
-    gCoordinator.Init(chunkManager);
 
-    // generate terrain
-    gCoordinator.mChunkManager->pregenerateChunks();
+class GameEngine3D{
+private:
+	Camera camera = Camera(glm::vec3{0, 0, -5}); // Positioned 5 units back from the triangle
+	int windowWidth;
+	int windowHeight;
+	GLFWwindow* window;
+	Render render;
+	
 
-    gCoordinator.RegisterComponent<Gravity>();
-    gCoordinator.RegisterComponent<RigidBody>();
-    gCoordinator.RegisterComponent<Transform>();
+public:
+	GameEngine3D(int w, int h){
+		windowWidth = w;
+		windowHeight = h;
 
-    auto physicsSystem = gCoordinator.RegisterSystem<PhysicsSystem>();
-
-    Signature signature;
-    signature.set(gCoordinator.GetComponentType<Gravity>());
-    signature.set(gCoordinator.GetComponentType<RigidBody>());
-    signature.set(gCoordinator.GetComponentType<Transform>());
-    gCoordinator.SetSystemSignature<PhysicsSystem>(signature);
-
-    std::vector<Entity> entities(MAX_ENTITIES);
-
-    // create a dummy "player entity"
-    entities[0] = gCoordinator.CreateEntity();
-    gCoordinator.AddComponent(entities[0],
-                              Gravity{glm::vec3(0.0f, -0.05f, 0.0f)});
-    gCoordinator.AddComponent(
-        entities[0],
-        RigidBody{glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f)});
-
-    // place the entity in front of us
-    gCoordinator.AddComponent(
-        entities[0], Transform{.position = glm::vec3(0.0f, 10.0f, -5.0f),
-                               .rotation = glm::vec3(0.0f, 0.0f, 0.0f),
-                               .scale = glm::vec3(1.0f, 1.0f, 1.0f)});
-
-    auto player = entities[0];
-
-    // render loop
-    // -----------
-
-    while (!glfwWindowShouldClose(window)) {
-        // per-frame time logic
-        // --------------------
-        float currentFrame = static_cast<float>(glfwGetTime());
-        deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
-
-        physicsSystem->Update(deltaTime);
-
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        // input
-        // -----
-        processInput(window, &cursorOn);
-
-        // render
-        // ------
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        // update
-        gCoordinator.mChunkManager->update(deltaTime, gCoordinator.mCamera);
-        // get player deets
-        RigidBody playerRB = gCoordinator.GetComponent<RigidBody>(player);
-        Transform playerTrans = gCoordinator.GetComponent<Transform>(player);
-
-        // render
-        gCoordinator.mChunkManager->render(gCoordinator.mCamera);
-        
-        // TODO: render the "player" entity
-        // defaultShader->use();
-        // glUseProgram(0);
-
-        // recreate the block mesh for current time
-
-        blockMesh.vertexCount = 0;  // reset vertex count
-        blockMesh.triangleCount = 0;    // reset triangle count
-
-        createMovingBlocksRandom(&blockMesh, deltaTime);
-
-        blockRenderer->update(&(blockMesh.vaoId), blockMesh.vboId, 
-                                    blockMesh.vertices, blockMesh.vertexCount, 
-                                    blockMesh.indices, blockMesh.triangleCount);
-
-
-
-        // render the block
-        blockRenderer->draw(gCoordinator.mCamera, &(blockMesh.vaoId), blockMesh.vboId,
-                            blockMesh.vertices, blockMesh.vertexCount,
-                            blockMesh.indices, blockMesh.triangleCount,
-                            blockShader, glm::vec3(0.0f, 0.0f, 0.0f));
-
-
-
-        // Calculate  FPS
-        int fps = calculateFPS(deltaTime);
-        float mem = calculateMemUsage();
-        if (fps != -1) {
-            std::sprintf(fpsStr, "FPS: %d", fps);
-        }
-        std::sprintf(memStr, "RAM: %f MB", mem / 1000000);
-
-        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always,
-                                ImVec2(0.0f, 0.0f));
-        ImGuiWindowFlags statsFlags =
-            ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-            ImGuiWindowFlags_NoSavedSettings |
-            ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
-        statsFlags |= ImGuiWindowFlags_NoMove;
-        bool active = true;
-        ImGui::Begin("Stats", &active, statsFlags);
-        ImGui::Text("%s", fpsStr);
-        ImGui::Text("%s", memStr);
-        ImGui::Separator();
-        // Ends the window
-        ImGui::End();
-
-        ImGui::Begin("Player");
-        ImGui::Text("velocity: (%.2f, %.3f, %.3f)", playerRB.velocity.x,
-                    playerRB.velocity.y, playerRB.velocity.z);
-        ImGui::Text("position: (%.2f, %.3f, %.3f)", playerTrans.position.x,
-                    playerTrans.position.y, playerTrans.position.z);
-        ImGui::End();
-
-        ImGui::Begin("Camera");
-        ImGui::Text("fov: %.2f", gCoordinator.mCamera.fov);
-        ImGui::Text("pos: (%.2f, %.3f, %.3f)", gCoordinator.mCamera.cameraPos.x,
-                    gCoordinator.mCamera.cameraPos.y,
-                    gCoordinator.mCamera.cameraPos.z);
-        ImGui::Text("left: (%.2f, %.3f, %.3f)",
-                    gCoordinator.mCamera.cameraLeft.x,
-                    gCoordinator.mCamera.cameraLeft.y,
-                    gCoordinator.mCamera.cameraLeft.z);
-        ImGui::Text("right: (%.2f, %.3f, %.3f)",
-                    gCoordinator.mCamera.cameraRight.x,
-                    gCoordinator.mCamera.cameraRight.y,
-                    gCoordinator.mCamera.cameraRight.z);
-        ImGui::Text("up: (%.2f, %.3f, %.3f)", gCoordinator.mCamera.cameraUp.x,
-                    gCoordinator.mCamera.cameraUp.y,
-                    gCoordinator.mCamera.cameraUp.z);
-        ImGui::Text("frustum:");
-        ImGui::Text("left d = %.2f",
-                    gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_LEFT]
-                        .distance);
-        ImGui::Text("right d = %.2f",
-                    gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_RIGHT]
-                        .distance);
-        ImGui::Text(
-            "left: n:(%.2f, %.3f, %.3f)\nright: n:(%.3f, %.3f, %.3f)",
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_LEFT].normal.x,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_LEFT].normal.y,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_LEFT].normal.z,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_RIGHT]
-                .normal.x,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_RIGHT]
-                .normal.y,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_RIGHT]
-                .normal.z);
-
-        ImGui::Text(
-            "near: n:(%.2f, %.3f, %.3f)\nfar: n:(%.3f, %.3f, %.3f)",
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_NEAR].normal.x,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_NEAR].normal.y,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_NEAR].normal.z,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_FAR].normal.x,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_FAR].normal.y,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_FAR].normal.z);
-
-        ImGui::Text(
-            "bottom: n:(%.2f, %.3f, %.3f)\ntop: n:(%.3f, %.3f, %.3f)",
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_BOTTOM]
-                .normal.x,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_BOTTOM]
-                .normal.y,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_BOTTOM]
-                .normal.z,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_TOP].normal.x,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_TOP].normal.y,
-            gCoordinator.mCamera.frustum.planes[Frustum::FRUSTUM_TOP].normal.z);
-        ImGui::End();
-
-        if (cursorOn) {
-            ImGui::Begin("Debug Menu");
-            // if(DEBUG){
-            // 	ImGui::DragInt("tps", &g.ticksPerSecond, 1, 0, 1000);
-            // }
-            // Text that appears in the window
-            ImGui::Checkbox("generate chunks",
-                            &gCoordinator.mChunkManager->genChunk);
-            ImGui::LabelText("##moveSpeedLabel", "Movement Speed");
-            ImGui::SliderFloat("##moveSpeedSlider",
-                               &gCoordinator.mCamera.cameraSpeedMultiplier,
-                               1.0f, 1000.0f);
-            ImGui::LabelText("##chunkGenDistanceLabel", "Chunk Gen Distance");
-            ImGui::SliderInt(
-                "##chunkGenDistanceSlider",
-                (int *)&(gCoordinator.mChunkManager->chunkGenDistance), 1, 16);
-            ImGui::LabelText("##renderDistanceLabel", "Render Distance");
-            ImGui::SliderInt(
-                "##renderDistanceSlider",
-                (int *)&(gCoordinator.mChunkManager->chunkRenderDistance), 1,
-                16);
-            ImGui::LabelText("##zFarLabel", "zFar");
-            ImGui::SliderFloat("##zFarSlider", &gCoordinator.mCamera.zFar, 1.0f,
-                               2000.0f);
-            ImGui::LabelText("##fovSliderLabel", "FOV");
-            ImGui::SliderFloat("##fovSlider", &gCoordinator.mCamera.fov, 25.0f,
-                               105.0f);
-            // Slider that appears in the window
-            // Ends the window
-            ImGui::End();
-        }
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        // Swap buffers and poll IO events
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
-
-    // optional: de-allocate all resources once they've outlived their purpose:
-    // ------------------------------------------------------------------------
-    // glDeleteVertexArrays(1, &VAO);
-    // glDeleteBuffers(1, &VBO);
-
-    // glfw: terminate, clearing all previously allocated GLFW resources.
-    // ------------------------------------------------------------------
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwTerminate();
+		// Initialize GLFW
+		if (!glfwInit()) {
+			std::cerr << "Failed to initialize GLFW" << std::endl;
+			exit(-1);
+		}
+
+		// Set the error callback
+		glfwSetErrorCallback(errorCallback);
+
+
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+		#ifdef __APPLE__
+		glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // Required on macOS
+		#endif
+
+
+
+		// Create a GLFW window
+		window = glfwCreateWindow(windowWidth, windowHeight, "Basic 3D Viewer", NULL, NULL);
+		if (!window) {
+			std::cerr << "Failed to create GLFW window" << std::endl;
+			glfwTerminate();
+			exit(-1);
+		}
+
+		// Make the window's context current
+		glfwMakeContextCurrent(window);
+
+		// Initialize GLAD
+		if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+			std::cerr << "Failed to initialize GLAD" << std::endl;
+			glfwTerminate();
+			exit(-1);
+		}
+
+		// Create user resources as part of this thread
+		if (!render.init(windowWidth, windowHeight)){
+			std::cerr << "Failed on user create" << std::endl;
+			exit(-1);
+		}
+	}
+
+	
+
+
+
+	void Run(){
+		auto tp1 = std::chrono::system_clock::now();
+		auto tp2 = std::chrono::system_clock::now();
+
+		//mouse
+		double lastX = 0.0;
+		double lastY = 0.0;
+
+		// if screen size has changed, update viewport
+		int screenWidth, screenHeight;
+		glfwGetFramebufferSize(window, &screenWidth, &screenHeight);
+		glViewport(0, 0, screenWidth, screenHeight);
+
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+	// int fps_update = 0;
+	// double fps_elapsed_time = 0.0;
+	bool cursorEnabled = false;		while (!glfwWindowShouldClose(window)){
+			// Run as fast as possible
+
+			// check if window size has changed
+			int w, h;
+			glfwGetFramebufferSize(window, &w, &h);
+			if(w != screenWidth || h != screenHeight){
+				screenWidth = w;
+				screenHeight = h;
+				glViewport(0, 0, screenWidth, screenHeight);
+			}
+			
+			// Handle Timing
+			tp2 = std::chrono::system_clock::now();
+			std::chrono::duration<float> elapsedTime = tp2 - tp1;
+			tp1 = tp2;
+			float fElapsedTime = elapsedTime.count();
+
+
+			//handle mouse - use change in mouse position to rotate camera
+			if(cursorEnabled == false){
+				double mouseX, mouseY = 0.0;
+				glfwGetCursorPos(window, &mouseX, &mouseY);
+				double xoffset = mouseX - lastX;
+				double yoffset = lastY - mouseY; // reversed since y-coordinates go from bottom to top
+				lastX = mouseX;
+				lastY = mouseY;
+
+				float sensitivity = 0.5f;
+				xoffset *= sensitivity;
+				yoffset *= sensitivity;
+
+				camera.fYaw -= xoffset * fElapsedTime;
+				camera.fPitch += yoffset * fElapsedTime;
+			}
+
+
+			//stop pitch going too high or low
+			if(camera.fPitch > 1.5f){
+				camera.fPitch = 1.5f;
+			}
+
+			if(camera.fPitch < -1.5f){
+				camera.fPitch = -1.5f;
+			}
+
+			glm::vec3 vForward = camera.lookDir * (30.0f * fElapsedTime);
+			glm::vec3 vRight = { camera.lookDir.z, 0, -camera.lookDir.x };
+			vRight = vRight * (8.0f * fElapsedTime);
+
+			glm::vec3 vUp = { 0,1,0 };
+			vUp = vUp * (8.0f * fElapsedTime);
+
+			// Standard FPS Control scheme, but turn instead of strafe
+			if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.pos = camera.pos + vForward;
+			if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.pos = camera.pos - vForward;
+			
+			//pan camera left
+			if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.pos = camera.pos + vRight;
+			//pan camera right
+			if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.pos = camera.pos - vRight;
+		
+			//move camera up
+			if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) camera.pos.y += 8.0f * fElapsedTime;
+			//move camera down
+			if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) camera.pos.y -= 8.0f * fElapsedTime;
+			
+			//escape
+			if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
+
+			// toggle cursor
+			if(glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS){
+				if(cursorEnabled){
+					glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+					cursorEnabled = false;
+				} else {
+					cursorEnabled = true;
+					glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+					// unlock cursor
+				}
+				// stop further key presses
+			}
+			
+			// Handle Frame Update
+
+			//update screen
+			// Set the background color to white
+			glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+			// render 3d scene
+			// use chunk manager to render
+			render.renderData(camera.viewMatrix(), verticies, indicies);
+			
+
+			// Swap buffers
+			glfwSwapBuffers(window);
+			// Poll for and process events
+			glfwPollEvents();
+				
+		}
+	
+		// call destructor for render
+		render.destroy();
+
+    	return;
+	}
+
+};
+
+
+
+
+int main(){
+	GameEngine3D game(1200, 800);
+
+	game.Run();
+
     return 0;
-}
-
-// process all input: query GLFW whether relevant keys are pressed/released this
-// frame and react accordingly
-// ---------------------------------------------------------------------------------------------------------
-void processInput(GLFWwindow *window, bool *cursorOn) {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-
-    float cameraSpeed = static_cast<float>(
-        gCoordinator.mCamera.cameraSpeedMultiplier * deltaTime);
-    constexpr glm::vec3 up = glm::vec3(0.0, 1.0, 0.0);
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        gCoordinator.mCamera.cameraPos +=
-            cameraSpeed * gCoordinator.mCamera.cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        gCoordinator.mCamera.cameraPos -=
-            cameraSpeed * gCoordinator.mCamera.cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        gCoordinator.mCamera.cameraPos -=
-            glm::normalize(glm::cross(gCoordinator.mCamera.cameraFront,
-                                      gCoordinator.mCamera.cameraUp)) *
-            cameraSpeed;
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        gCoordinator.mCamera.cameraPos +=
-            glm::normalize(glm::cross(gCoordinator.mCamera.cameraFront,
-                                      gCoordinator.mCamera.cameraUp)) *
-            cameraSpeed;
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-        gCoordinator.mCamera.cameraPos += up * cameraSpeed;
-    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-        gCoordinator.mCamera.cameraPos -= up * cameraSpeed;
-    }
-
-    // insert into key press map
-    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS) {
-        keyPressMap[GLFW_KEY_B] = true;
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS) {
-        keyPressMap[GLFW_KEY_X] = true;
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE &&
-        keyPressMap[GLFW_KEY_B]) {
-        *cursorOn = !(*cursorOn);
-        glfwSetCursorPosCallback(window, *cursorOn ? imgui_mouse_callback
-                                                   : mouse_callback);
-        glfwSetScrollCallback(window, *cursorOn ? imgui_mouse_callback
-                                                : scroll_callback);
-        glfwSetInputMode(window, GLFW_CURSOR,
-                         *cursorOn ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
-        keyPressMap[GLFW_KEY_B] = false;
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_X) == GLFW_RELEASE &&
-        keyPressMap[GLFW_KEY_X]) {
-        gCoordinator.mChunkManager->genChunk =
-            !gCoordinator.mChunkManager->genChunk;
-        keyPressMap[GLFW_KEY_X] = false;
-    }
-
-    // TODO: a better way to do this?
-    gCoordinator.mCamera.frustum =
-        createFrustumFromCamera(gCoordinator.mCamera);
-}
-
-// glfw: whenever the window size changed (by OS or user resize) this callback
-// function executes
-// ---------------------------------------------------------------------------------------------
-void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
-    // make sure the viewport matches the new window dimensions; note that width
-    // and height will be significantly larger than specified on retina
-    // displays.
-    glViewport(0, 0, width, height);
-}
-
-// Function to calculate and return the FPS as a string
-int calculateFPS(float deltaTime) {
-    static int frameCount = 0;
-    static float elapsedTime = 0.0f;
-    static float lastTime = 0.0f;
-
-    elapsedTime += deltaTime;
-    frameCount++;
-
-    if (elapsedTime - lastTime >= 1.0f) { // Update every second
-        lastTime = elapsedTime;
-        int fps = frameCount;
-        frameCount = 0;
-        return fps;
-    }
-
-    return -1.0;
-}
-
-// Function to calculate and return the RAM usage as a string
-float calculateMemUsage() {
-    float memUsage = (float)getMemoryUsage();
-    return memUsage;
-}
-
-// glfw: whenever the mouse moves, this callback is called
-// -------------------------------------------------------
-void mouse_callback(GLFWwindow *window, double xposIn, double yposIn) {
-    float xpos = static_cast<float>(xposIn);
-    float ypos = static_cast<float>(yposIn);
-
-    if (gCoordinator.mCamera.firstMouse) {
-        gCoordinator.mCamera.lastX = xpos;
-        gCoordinator.mCamera.lastY = ypos;
-        gCoordinator.mCamera.firstMouse = false;
-    }
-
-    float xoffset = xpos - gCoordinator.mCamera.lastX;
-    float yoffset = gCoordinator.mCamera.lastY -
-                    ypos; // reversed since y-coordinates go from bottom to top
-    gCoordinator.mCamera.lastX = xpos;
-    gCoordinator.mCamera.lastY = ypos;
-
-    float sensitivity = 0.1f; // change this value to your liking
-    xoffset *= sensitivity;
-    yoffset *= sensitivity;
-
-    gCoordinator.mCamera.yaw += xoffset;
-    gCoordinator.mCamera.pitch += yoffset;
-
-    // make sure that when pitch is out of bounds, screen doesn't get
-    // flipped
-    if (gCoordinator.mCamera.pitch > 89.0f)
-        gCoordinator.mCamera.pitch = 89.0f;
-    if (gCoordinator.mCamera.pitch < -89.0f)
-        gCoordinator.mCamera.pitch = -89.0f;
-
-    glm::vec3 front;
-    front.x = cos(glm::radians(gCoordinator.mCamera.yaw)) *
-              cos(glm::radians(gCoordinator.mCamera.pitch));
-    front.y = sin(glm::radians(gCoordinator.mCamera.pitch));
-    front.z = sin(glm::radians(gCoordinator.mCamera.yaw)) *
-              cos(glm::radians(gCoordinator.mCamera.pitch));
-
-    gCoordinator.mCamera.cameraFront = glm::normalize(front);
-
-    // Calculate the right vector
-    gCoordinator.mCamera.cameraRight = glm::normalize(glm::cross(
-        gCoordinator.mCamera.cameraFront, glm::vec3(0.0f, 1.0f, 0.0f)));
-
-    // Calculate the up vector
-    gCoordinator.mCamera.cameraUp = glm::normalize(glm::cross(
-        gCoordinator.mCamera.cameraRight, gCoordinator.mCamera.cameraFront));
-
-    // Calculate the left vector (opposite of right)
-    gCoordinator.mCamera.cameraLeft = -gCoordinator.mCamera.cameraRight;
-
-    // The top vector is the same as the up vector in this case
-    gCoordinator.mCamera.cameraTop = gCoordinator.mCamera.cameraUp;
-
-    gCoordinator.mCamera.frustum =
-        createFrustumFromCamera(gCoordinator.mCamera);
-}
-
-void imgui_mouse_callback(GLFWwindow *window, double xposIn, double yposIn) {
-    ImGuiIO io = ImGui::GetIO();
-    double cursorX, cursorY;
-    glfwGetCursorPos(window, &cursorX, &cursorY);
-    ImGui_ImplGlfw_CursorPosCallback(window, cursorX, cursorY);
-}
-
-// glfw: whenever the mouse scroll wheel scrolls, this callback is called
-// ----------------------------------------------------------------------
-void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
-    gCoordinator.mCamera.cameraSpeedMultiplier -= (float)yoffset;
-    if (gCoordinator.mCamera.cameraSpeedMultiplier < 1.0f)
-        gCoordinator.mCamera.cameraSpeedMultiplier = 1.0f;
-    if (gCoordinator.mCamera.cameraSpeedMultiplier > 1000.0f)
-        gCoordinator.mCamera.cameraSpeedMultiplier = 1000.0f;
-
-    gCoordinator.mCamera.frustum =
-        createFrustumFromCamera(gCoordinator.mCamera);
-}
-
-
-
-// functions for rendering blocks from demo
-// -------------------------------------------------------------
-
-void createMovingBlocksWave(ChunkMesh<float> * entityMesh, float deltaTime){
-    static float time = 0.0f;
-    time += deltaTime;
-
-    
-    // Create a 10x10 grid of blocks
-    for (int x = 0; x < 30; x++) {
-        for (int z = 0; z < 30; z++) {
-            // Calculate position with spacing
-            float blockX = x * 1.f; // Center the grid
-            float blockZ = z * 1.f;
-            
-            // Create random phase offset for each block
-            float phaseOffset = (x * 0.7f + z * 0.5f) * 3.14159f;
-            
-            // Calculate wave that starts from corner (0,0) and ripples to corner (9,9)
-            float distanceFromCorner = sqrt(x*x + z*z); // Distance from origin corner
-            float waveSpeed = 2.0f;
-            float waveFreq = 0.5f;
-            float blockY = sin(time * waveSpeed + distanceFromCorner * waveFreq) * 2.0f;
-            
-            // Random color for each block based on x/z
-            float r = 0.1f; // Keep red low for blue/green gradient
-            float g = 0.3f + (static_cast<float>(x) / 25.0f) * 0.6f; // Green gradient across X
-            float b = 0.3f + (static_cast<float>(z) / 25.0f) * 0.6f; // Blue gradient across Z
-            
-            Block::creatColourCube(glm::vec3(blockX, blockY, blockZ),
-                                   glm::vec3(2.0f, 2.0f, 2.0f),
-                                   glm::vec3(r, g, b),
-                                   entityMesh->vertices,
-                                   entityMesh->indices,
-                                   &(entityMesh->vertexCount),
-                                   &(entityMesh->triangleCount));
-        }
-    }
-}
-
-void createMovingBlocksRandom(ChunkMesh<float> * entityMesh, float deltaTime){
-    static float time = 0.0f;
-    time += deltaTime;
-
-    
-    // Create a 30x30 grid of blocks
-    for (int x = 0; x < 30; x++) {
-        for (int z = 0; z < 30; z++) {
-            // Calculate position with spacing
-            float blockX = x * 1.f; // Center the grid
-            float blockZ = z * 1.f;
-            
-            // Create random phase offset for each block
-            float phaseOffset = (x * 0.7f + z * 0.5f) * 3.14159f;
-            
-            // Calculate sine wave height with random variations
-            float angle = (x + z) * 0.1f;
-            float waveHeight = sin(time * 2.0f + phaseOffset) * 2.0f;
-            float randomOffset = sin(time * 1.3f + phaseOffset * 2.0f) * 0.5f;
-            float blockY = waveHeight + randomOffset - angle;
-            
-            // Random color for each block based on x/z
-            float r = 0.1f; // Keep red low for blue/green gradient
-            float g = 0.3f + (static_cast<float>(x) / 29.0f) * 0.6f; // Green gradient across X
-            float b = 0.3f + (static_cast<float>(z) / 29.0f) * 0.6f; // Blue gradient across Z
-            
-            Block::creatColourCube(glm::vec3(blockX, blockY + 10, blockZ),
-                                   glm::vec3(1.0f, 1.0f, 1.0f),
-                                   glm::vec3(r, g, b),
-                                   entityMesh->vertices,
-                                   entityMesh->indices,
-                                   &(entityMesh->vertexCount),
-                                   &(entityMesh->triangleCount));
-        }
-    }
 }

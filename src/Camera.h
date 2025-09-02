@@ -1,78 +1,50 @@
-#ifndef CAMERA_H
-#define CAMERA_H
+#pragma once
+#include "header.h"
 
-#include "Frustum.h"
+/*
+Camera class
+holds all related variables, all public for now
+creates view matrix
+*/
 
-// Frustum createFrustumFromCamera(Camera camera);
+class Camera {
+public:
+    glm::vec3 pos;	// Location of camera in world space
+    glm::vec3 lookDir;	// Direction vector along the direction camera points
+    float fYaw = 0.0f;		// FPS Camera rotation in XZ plane
+    float fPitch = 0.0f;	// FPS Camera rotation in YZ plane
 
-struct Camera {
-    // TODO: figure out camera following
-    // Entity* attachedTo;
-    bool isFree = true;
-    // camera
-    float cameraSpeedMultiplier = 20.0f;
-    glm::vec3 cameraPos = glm::vec3(0.0f, 2.0f, 1.0f);
-    glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
-    glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+    Camera() = default;
+    Camera(glm::vec3 pos) : pos(pos) {
+        //look at z by default
+        lookDir = {0,0,1};
+    }
 
-    glm::vec3 cameraRight = glm::vec3(1.0f, 0.0f, 0.0f);
 
-    // Calculate the left vector (opposite of right)
-    glm::vec3 cameraLeft = -cameraRight;
+    glm::mat4 viewMatrix() {
+        // Calculate the forward vector from yaw and pitch angles
+        glm::vec3 forward;
+        forward.x = cos(fPitch) * sin(fYaw);
+        forward.y = sin(fPitch);
+        forward.z = cos(fPitch) * cos(fYaw);
+    
+        // Normalize the forward vector to get the look direction
+        lookDir = glm::normalize(forward);
+    
+        // Define the up vector (world up direction)
+        glm::vec3 up = {0.0f, 1.0f, 0.0f};
+    
+        // Calculate the right vector
+        glm::vec3 right = glm::normalize(glm::cross(up, lookDir));
+    
+        // Recalculate the orthogonal up vector
+        up = glm::cross(lookDir, right);
+    
+        // Calculate the target point the camera is looking at
+        glm::vec3 target = pos + lookDir;
+    
+        // Create and return the view matrix using glm::lookAt
+        return glm::lookAt(pos, target, up);
+    }
 
-    // The top vector is the same as the up vector in this case
-    glm::vec3 cameraTop = cameraUp;
-
-    bool firstMouse = true;
-    float yaw = -90.0f; // yaw is initialized to -90.0 degrees since a yaw of
-                        // 0.0 results in a direction vector pointing to the
-                        // right so we initially rotate a bit to the left.
-    float pitch = 0.0f;
-    float lastX = 800.0f / 2.0;
-    float lastY = 600.0 / 2.0;
-    float fov = 45.0f;
-
-    float zNear = 0.1f;
-    float zFar = 1000.0f;
-
-    Frustum frustum;
-
-    Camera();
 };
-
-Frustum createFrustumFromCamera(Camera camera) {
-    Frustum frustum;
-
-    float aspect = (float)SCR_WIDTH / (float)SCR_HEIGHT;
-    const float halfVSide =
-        camera.zFar * tanf((float)glm::radians(camera.fov) * .5f);
-    const float halfHSide = halfVSide * aspect;
-    const glm::vec3 frontMultFar = camera.zFar * camera.cameraFront;
-
-    frustum.planes[Frustum::FRUSTUM_NEAR] =
-        Plane3(camera.cameraPos + camera.zNear * camera.cameraFront,
-               camera.cameraFront);
-    camera.frustum.planes[Frustum::FRUSTUM_FAR] =
-        Plane3(camera.cameraPos + frontMultFar, -camera.cameraFront);
-    camera.frustum.planes[Frustum::FRUSTUM_RIGHT] =
-        Plane3(camera.cameraPos,
-               glm::cross(frontMultFar - camera.cameraRight * halfHSide,
-                          camera.cameraUp));
-    frustum.planes[Frustum::FRUSTUM_LEFT] =
-        Plane3(camera.cameraPos,
-               glm::cross(camera.cameraUp,
-                          frontMultFar + camera.cameraRight * halfHSide));
-    frustum.planes[Frustum::FRUSTUM_TOP] =
-        Plane3(camera.cameraPos,
-               glm::cross(camera.cameraRight,
-                          frontMultFar - camera.cameraUp * halfVSide));
-    frustum.planes[Frustum::FRUSTUM_BOTTOM] = Plane3(
-        camera.cameraPos, glm::cross(frontMultFar + camera.cameraUp * halfVSide,
-                                     camera.cameraRight));
-
-    return frustum;
-}
-
-Camera::Camera() { frustum = createFrustumFromCamera(*this); }
-
-#endif // CAMERA_H

@@ -1,13 +1,11 @@
 #version 330 core
-out vec4 FragColor;
+in vec3 colour;
+in float shadow;
 
-in vec2 texCoord;
-in float brightness;
+out vec4 finalColor;
 
-uniform sampler2D texture1;
 
-void main()
-{
-    vec4 textureColour = texture(texture1, texCoord);
-    FragColor = vec4(textureColour.rgb * brightness, textureColour.a);
+void main() {
+    // For debugging, let's display the pure color without shadow influence
+    finalColor = vec4(colour, 1.0);
 }
