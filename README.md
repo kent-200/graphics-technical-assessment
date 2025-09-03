@@ -1,7 +1,10 @@
+> This task is relevant for **voxel engine**
+
+
 # CS Club Open Source Team Recruitment Technical Assessment: Graphics
 
 
-Thank you for applying to the CS Club Open Source Team! All of our projects are maintained by student volunteers like yourself who are excited to learn, grow, and make a real impact.
+> **YOU DON'T NEED TO COMPLETE ALL PARTS.** 
 
 To complete this assessment, you will need to fork and clone this repo, implement and push your solutions to GitHub, and send a link of your fork to our Open Source & Infrastructure Manager Phoenix (pbird99) on Discord.
 
