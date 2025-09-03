@@ -2,12 +2,28 @@
 
 Complete these tasks in order to learn 3D graphics programming concepts. Each builds upon the previous one.
 
+
+
+## Building and running
+
+### Linux, Mac OS, MSYS (Windows)
+
+```sh
+./build.sh
+```
+
+### Windows - Visual Studio
+
+```bat
+.\build.bat
+```
+
 ### Install
 
 Refer to install.md for any debug steps for installing libraries
 
 
-### What you are provided
+## What you are provided
 
 You are given the basic engine and some template code for generating a single triangle.
 
@@ -19,7 +35,7 @@ Create using the following verticies in main.cpp
 <img src="image-1.png" alt="Engine" width="600"/>
 
 
-### Task 1: Create a Cube
+## Task 1: Create a Cube
 Replace the current triangle with a 3D cube.
 
 **Hints**:
@@ -31,7 +47,7 @@ Replace the current triangle with a 3D cube.
 
 
 
-### Task 2: Simple Collision Detection
+## Task 2: Simple Collision Detection
 Implement basic collision detection to prevent the camera from moving through objects.
 
 **Hints**:
@@ -43,7 +59,7 @@ Implement basic collision detection to prevent the camera from moving through ob
 
 
 
-### Task 3: Basic Game - Maze or Platformer
+## Task 3: Basic Game - Maze or Platformer
 Create a simple game using your collision system. This doesn't need to be too complicated, its more to teach you how to work with the rendering and collision logic to actually create something.
 
 **Examples**:
